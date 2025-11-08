@@ -12,6 +12,7 @@ import LaunchPlanView from './components/LaunchPlanView';
 import { SparkleProvider, useSparkles } from './contexts/SparkleContext';
 import SparkleEffect from './components/effects/SparkleEffect';
 import { MenuIcon } from './components/icons/MenuIcon';
+import LoginView from './components/LoginView';
 
 export type AppView = 'home' | 'wishing' | 'loading' | 'results' | 'error' | 'chat' | 'launchPlan';
 
@@ -23,7 +24,11 @@ const initialGoals: HustleGoal[] = [
 const SETTINGS_STORAGE_KEY = 'hustleGenieSettings';
 const defaultPersonality = 'You are HustleGenie, an AI assistant with a witty, encouraging, and magical personality. You help users with their side hustle questions, offering advice, motivation, and creative ideas. Keep your answers concise and fun. Format longer responses into paragraphs for readability.';
 
-const AppContent: React.FC = () => {
+interface AppContentProps {
+  onLogout: () => void;
+}
+
+const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth >= 768; // md breakpoint
@@ -344,6 +349,7 @@ const AppContent: React.FC = () => {
         }}
         isSidebarOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        onLogout={onLogout}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
          {/* Mobile Header */}
@@ -372,9 +378,36 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    try {
+      return window.localStorage.getItem('isAuthenticated') === 'true';
+    } catch (e) {
+      console.error("Failed to read auth state from storage", e);
+      return false;
+    }
+  });
+
+  const handleLogin = () => {
+    try {
+      window.localStorage.setItem('isAuthenticated', 'true');
+    } catch (e) {
+      console.error("Failed to save auth state to storage", e);
+    }
+    setIsAuthenticated(true);
+  };
+  
+  const handleLogout = () => {
+    try {
+      window.localStorage.removeItem('isAuthenticated');
+    } catch (e) {
+      console.error("Failed to clear auth state from storage", e);
+    }
+    setIsAuthenticated(false);
+  };
+  
   return (
     <SparkleProvider>
-      <AppContent />
+      {isAuthenticated ? <AppContent onLogout={handleLogout} /> : <LoginView onLogin={handleLogin} />}
     </SparkleProvider>
   );
 }

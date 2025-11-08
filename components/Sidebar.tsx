@@ -5,6 +5,7 @@ import { HomeIcon } from './icons/HomeIcon';
 import { ChatIcon } from './icons/ChatIcon';
 import { ChevronLeftIcon } from './icons/ChevronLeftIcon';
 import { useSparkles } from '../contexts/SparkleContext';
+import { LogoutIcon } from './icons/LogoutIcon';
 
 
 interface SidebarProps {
@@ -12,9 +13,10 @@ interface SidebarProps {
     onNavigate: (view: AppView) => void;
     isSidebarOpen: boolean;
     onToggle: () => void;
+    onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isSidebarOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isSidebarOpen, onToggle, onLogout }) => {
     const { showSparkles } = useSparkles();
 
     const handleLogoClick = (e: React.MouseEvent) => {
@@ -75,7 +77,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isSidebarOpe
                 </nav>
             </div>
 
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 space-y-2">
+                <button
+                    onClick={onLogout}
+                    className={`w-full flex items-center space-x-4 p-3 rounded-lg transition-colors text-text-secondary hover:bg-red-500/20 hover:text-red-400 ${!isSidebarOpen && 'justify-center'}`}
+                    aria-label="Log Out"
+                >
+                    <LogoutIcon className="w-6 h-6 flex-shrink-0" />
+                    <span className={`font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${isSidebarOpen ? 'max-w-full opacity-100' : 'max-w-0 opacity-0'}`}>
+                        Log Out
+                    </span>
+                </button>
                  <button
                     onClick={onToggle}
                     className="w-full hidden md:flex items-center justify-center p-3 rounded-lg transition-colors text-text-secondary hover:bg-background-hover"
