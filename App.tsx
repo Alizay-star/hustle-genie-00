@@ -377,10 +377,13 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   );
 };
 
+const AUTH_TOKEN_KEY = 'hustleGenieAuthToken';
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
-      return window.localStorage.getItem('isAuthenticated') === 'true';
+      // Check for a mock auth token
+      return !!window.localStorage.getItem(AUTH_TOKEN_KEY);
     } catch (e) {
       console.error("Failed to read auth state from storage", e);
       return false;
@@ -389,7 +392,9 @@ const App: React.FC = () => {
 
   const handleLogin = () => {
     try {
-      window.localStorage.setItem('isAuthenticated', 'true');
+      // In a real app, this token would be provided by a backend server after successful authentication.
+      const mockToken = `mock-jwt-token.${btoa(JSON.stringify({ user: 'demo-user', exp: Date.now() + (3600 * 1000) }))}`;
+      window.localStorage.setItem(AUTH_TOKEN_KEY, mockToken);
     } catch (e) {
       console.error("Failed to save auth state to storage", e);
     }
@@ -398,7 +403,8 @@ const App: React.FC = () => {
   
   const handleLogout = () => {
     try {
-      window.localStorage.removeItem('isAuthenticated');
+      // Clear the mock token
+      window.localStorage.removeItem(AUTH_TOKEN_KEY);
     } catch (e) {
       console.error("Failed to clear auth state from storage", e);
     }

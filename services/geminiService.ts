@@ -1,10 +1,9 @@
 import { GoogleGenAI, Type, Chat, Modality } from "@google/genai";
 import type { WishFormData, HustleIdea, LaunchPlan, ChatMessage } from '../types';
 
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable is not set.");
-}
+// WARNING: Hardcoding API keys directly in the code is a security risk.
+// It is best practice to use environment variables to keep them secure.
+const API_KEY = "AIzaSyCRU9iRGkDIXCW9WDbP3ecPlbSbavbkiUA";
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
