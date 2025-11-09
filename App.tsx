@@ -309,7 +309,7 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
                     </div>
                     <div className="mt-8 pt-4 border-t border-border-primary">
                         <p className="text-text-secondary text-sm">Daily inspiration</p>
-                        <p className="text-text-primary font-medium italic">Today's magic: Consistency > Luck</p>
+                        <p className="text-text-primary font-medium italic">Today's magic: Consistency &gt; Luck</p>
                     </div>
                     </div>
                     <div className="lg:col-span-2 space-y-8">
