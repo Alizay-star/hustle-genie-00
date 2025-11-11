@@ -2,7 +2,7 @@ import { GoogleGenAI, Type, Chat, Modality } from "@google/genai";
 import type { WishFormData, HustleIdea, LaunchPlan, UserData, User, Settings, HustleGoal, ChatHistoryItem } from '../types';
 
 // Fix: Use environment variable for API key as per guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: "AIzaSyCRU9iRGkDIXCW9WDbP3ecPlbSbavbkiUA" });
 
 // This type is based on the expected structure for the Gemini API history.
 type GeminiHistory = {
