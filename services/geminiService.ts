@@ -1,9 +1,8 @@
-
 import { GoogleGenAI, Type, Chat, Modality } from "@google/genai";
 import type { WishFormData, HustleIdea, LaunchPlan, UserData, User, Settings, HustleGoal, ChatHistoryItem } from '../types';
 
-// The API key is hardcoded as requested by the user.
-const ai = new GoogleGenAI({ apiKey: "AIzaSyCRU9iRGkDIXCW9WDbP3ecPlbSbavbkiUA" });
+// Fix: Use environment variable for API key as per guidelines.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // This type is based on the expected structure for the Gemini API history.
 type GeminiHistory = {
@@ -224,6 +223,7 @@ export const startChatSession = (history?: GeminiHistory, systemInstruction?: st
 
 export const sendMessageToGenie = async (chat: Chat, message: string): Promise<string> => {
     try {
+        // Fix: The `sendMessage` method expects an object with a `message` property.
         const response = await chat.sendMessage({ message });
         return response.text;
     } catch (error) {

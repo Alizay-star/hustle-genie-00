@@ -23,7 +23,7 @@ const defaultPersonality = 'You are HustleGenie, an AI assistant with a witty, e
 interface AppContentProps {
   currentUser: User;
   userData: UserData;
-  onUserDataChange: (data: UserData) => void;
+  onUserDataChange: (updater: (prevData: UserData) => UserData) => void;
   onLogout: () => void;
 }
 
@@ -54,14 +54,17 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, userData, onUserDa
 
 
   const handleSettingsChange = (newSettings: Partial<Settings>) => {
-    onUserDataChange({
-      ...userData,
-      settings: { ...settings, ...newSettings },
-    });
+    onUserDataChange(prev => ({
+      ...prev,
+      settings: { ...prev.settings, ...newSettings },
+    }));
   }
   
-  const handleChatHistoryChange = (newChatHistory: ChatHistoryItem[]) => {
-    onUserDataChange({ ...userData, chatHistory: newChatHistory });
+  const handleChatHistoryChange = (historyUpdater: ChatHistoryItem[] | ((prevHistory: ChatHistoryItem[]) => ChatHistoryItem[])) => {
+    onUserDataChange(prev => ({
+      ...prev,
+      chatHistory: typeof historyUpdater === 'function' ? historyUpdater(prev.chatHistory) : historyUpdater,
+    }));
   }
 
   const handleViewChange = (newView: AppView) => {
@@ -127,10 +130,12 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, userData, onUserDa
   };
   
   const handleGoalUpdate = (titleToUpdate: string, newCurrent: number) => {
-    const newGoals = goals.map(goal =>
-      goal.title === titleToUpdate ? { ...goal, current: newCurrent } : goal
-    );
-    onUserDataChange({ ...userData, goals: newGoals });
+    onUserDataChange(prev => ({
+      ...prev,
+      goals: prev.goals.map(goal =>
+        goal.title === titleToUpdate ? { ...goal, current: newCurrent } : goal
+      )
+    }));
   };
   
   const handleGoalAdd = (newGoal: { title: string; goal: number; imageUrl?: string }) => {
@@ -139,17 +144,18 @@ const AppContent: React.FC<AppContentProps> = ({ currentUser, userData, onUserDa
         alert("A goal with this title already exists!");
         return;
     }
-    const newGoals = [
-        ...goals,
-        { ...newGoal, current: 0 }
-    ];
-    onUserDataChange({ ...userData, goals: newGoals });
+    onUserDataChange(prev => ({
+      ...prev,
+      goals: [...prev.goals, { ...newGoal, current: 0 }]
+    }));
     setIsAddingGoal(false); // Hide form after adding
   };
 
   const handleGoalDelete = (titleToDelete: string) => {
-    const newGoals = goals.filter(goal => goal.title !== titleToDelete);
-    onUserDataChange({ ...userData, goals: newGoals });
+    onUserDataChange(prev => ({
+      ...prev,
+      goals: prev.goals.filter(goal => goal.title !== titleToDelete)
+    }));
   };
 
 
@@ -424,10 +430,13 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  const handleUserDataChange = (newUserData: UserData) => {
+  const handleUserDataChange = (updater: (prevData: UserData) => UserData) => {
     if (currentUser) {
-      setUserData(newUserData);
-      saveUserData(currentUser.email, newUserData);
+      setUserData(prevUserData => {
+        const newUserData = updater(prevUserData!); // It's safe to assume prevUserData is not null here.
+        saveUserData(currentUser.email, newUserData);
+        return newUserData;
+      });
     }
   };
   

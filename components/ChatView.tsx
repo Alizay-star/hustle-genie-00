@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Chat } from '@google/genai';
 import { startChatSession, sendMessageToGenie, generateImageFromPrompt } from '../services/geminiService';
@@ -33,7 +34,7 @@ interface ChatViewProps {
   settings: Settings;
   onSettingsChange: (settings: Partial<Settings>) => void;
   chatHistory: ChatHistoryItem[];
-  onChatHistoryChange: (history: ChatHistoryItem[]) => void;
+  onChatHistoryChange: (historyUpdater: ((prevHistory: ChatHistoryItem[]) => ChatHistoryItem[]) | ChatHistoryItem[]) => void;
 }
 
 type ChatMode = 'text' | 'image';
@@ -226,7 +227,7 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
     
         let currentChatId = activeChatId;
     
-        // If it's a new chat, create a history item
+        // Update history with the user's message immediately
         if (currentChatId === null) {
             const newId = new Date().toISOString();
             const newTitle = messageText.length > 30 ? messageText.substring(0, 27) + '...' : messageText;
@@ -236,35 +237,36 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
                 date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
                 messages: updatedMessages,
             };
-            onChatHistoryChange([newHistoryItem, ...chatHistory]);
+            onChatHistoryChange(prev => [newHistoryItem, ...prev]);
             setActiveChatId(newId);
             currentChatId = newId;
         } else {
-            onChatHistoryChange(chatHistory.map(chat =>
+            onChatHistoryChange(prev => prev.map(chat =>
                 chat.id === currentChatId ? { ...chat, messages: updatedMessages } : chat
             ));
         }
     
         let modelMessage: Message;
-        if (mode === 'text') {
-            const responseText = await sendMessageToGenie(chatSessionRef.current!, messageText);
-            modelMessage = { id: `msg-model-${Date.now()}`, role: 'model', responses: [{ text: responseText, isTyping: true }], activeResponseIndex: 0 };
-        } else {
-            try {
+        try {
+            if (mode === 'text') {
+                const responseText = await sendMessageToGenie(chatSessionRef.current!, messageText);
+                modelMessage = { id: `msg-model-${Date.now()}`, role: 'model', responses: [{ text: responseText, isTyping: true }], activeResponseIndex: 0 };
+            } else {
                 const imageUrl = await generateImageFromPrompt(messageText);
                 modelMessage = { id: `msg-model-${Date.now()}`, role: 'model', responses: [{ imageUrl: imageUrl }], activeResponseIndex: 0 };
-            } catch (error) {
-                modelMessage = { id: `msg-model-${Date.now()}`, role: 'model', responses: [{ text: 'Sorry, I couldn\'t generate that image. My magic might be a bit fuzzy.' }], activeResponseIndex: 0 };
             }
+        } catch (error) {
+            modelMessage = { id: `msg-model-${Date.now()}`, role: 'model', responses: [{ text: 'Sorry, I couldn\'t generate that. My magic might be a bit fuzzy.' }], activeResponseIndex: 0 };
         }
     
+        // Update UI and history with the model's response
         const messagesWithPendingResolved = updatedMessages.map(msg =>
             msg.id === userMessage.id ? { ...msg, isPending: false } : msg
         );
         const finalMessages = [...messagesWithPendingResolved, modelMessage];
         setMessages(finalMessages);
     
-        onChatHistoryChange(chatHistory.map(chat =>
+        onChatHistoryChange(prev => prev.map(chat =>
             chat.id === currentChatId ? { ...chat, messages: finalMessages } : chat
         ));
     
@@ -287,12 +289,11 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
     };
 
     const handleDeleteChat = (idToDelete: string) => {
-        const newHistory = chatHistory.filter(item => item.id !== idToDelete);
-        onChatHistoryChange(newHistory);
+        onChatHistoryChange(prev => prev.filter(item => item.id !== idToDelete));
         if (activeChatId === idToDelete) {
-            if (newHistory.length > 0) {
-                handleSelectChat(newHistory[0].id);
-            } else {
+            // After state update, the effect hook will select the latest chat
+            // To be safe, we can trigger it manually if history becomes empty
+            if (chatHistory.length === 1) {
                 handleNewChat();
             }
         }
@@ -329,7 +330,7 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
         setMessages(updatedMessages);
 
         if (activeChatId) {
-            onChatHistoryChange(chatHistory.map(chat => {
+            onChatHistoryChange(prev => prev.map(chat => {
                 if (chat.id === activeChatId) {
                     return { ...chat, messages: updatedMessages };
                 }
@@ -369,7 +370,6 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
             
             const newResponse = wasImageRequest ? { imageUrl: newModelResponseData } : { text: newModelResponseData, isTyping: true };
     
-            // Create a new message object with the new response appended
             const updatedModelMessage = { ...lastModelMessage };
             
             if (!updatedModelMessage.responses) {
@@ -384,18 +384,16 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
             delete updatedModelMessage.text;
             delete updatedModelMessage.imageUrl;
             
-            // Replace the last message in the state
             const finalMessages = [...messages.slice(0, -1), updatedModelMessage];
             setMessages(finalMessages);
     
             if (activeChatId) {
-                onChatHistoryChange(chatHistory.map(chat => 
+                onChatHistoryChange(prev => prev.map(chat => 
                     chat.id === activeChatId ? { ...chat, messages: finalMessages } : chat
                 ));
             }
         } catch (error) {
             console.error("Regeneration failed:", error);
-            // In case of an error, just stop the loading states
         } finally {
             setIsLoading(false);
             setIsRegenerating(false);
@@ -403,9 +401,9 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
     };
 
     const handleTypingComplete = () => {
-        const updateTypingStatus = (msgs: Message[]): Message[] => {
+        const updateTypingStatusInMessages = (msgs: Message[]): Message[] => {
             if (!msgs || msgs.length === 0) return msgs;
-
+    
             const lastMessage = msgs[msgs.length - 1];
             if (lastMessage?.role === 'model') {
                 const activeResponse = lastMessage.responses?.[lastMessage.activeResponseIndex ?? 0];
@@ -425,11 +423,11 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
             }
             return msgs;
         };
-
-        const updatedMessages = updateTypingStatus(messages);
+    
+        const updatedMessages = updateTypingStatusInMessages(messages);
         setMessages(updatedMessages);
         if (activeChatId) {
-            onChatHistoryChange(chatHistory.map(chat => {
+            onChatHistoryChange(prev => prev.map(chat => {
                 if (chat.id === activeChatId) {
                     return { ...chat, messages: updatedMessages };
                 }
@@ -444,8 +442,8 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
     };
 
     const handleSaveTitle = (id: string) => {
-        if (!editingTitle.trim()) return; // Don't save empty titles
-        onChatHistoryChange(chatHistory.map(chat => 
+        if (!editingTitle.trim()) return;
+        onChatHistoryChange(prev => prev.map(chat => 
             chat.id === id ? { ...chat, title: editingTitle.trim() } : chat
         ));
         setEditingChatId(null);
@@ -459,20 +457,20 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
         setMessages(updatedMessages);
 
         if (activeChatId) {
-            onChatHistoryChange(chatHistory.map(chat =>
+            onChatHistoryChange(prev => prev.map(chat =>
                 chat.id === activeChatId ? { ...chat, messages: updatedMessages } : chat
             ));
         }
     };
 
     const handleToggleChatPin = (chatId: string) => {
-        onChatHistoryChange(chatHistory.map(chat =>
+        onChatHistoryChange(prev => prev.map(chat =>
             chat.id === chatId ? { ...chat, isPinned: !chat.isPinned } : chat
         ));
     };
 
     const handleToggleReaction = (messageId: string, emoji: string) => {
-        const updateReactions = (msgs: Message[]): Message[] => {
+        const updateReactionsInMessages = (msgs: Message[]): Message[] => {
             return msgs.map(msg => {
                 if (msg.id === messageId) {
                     const existingReactions = msg.reactions || [];
@@ -486,11 +484,11 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHis
             });
         };
 
-        const updatedMessages = updateReactions(messages);
+        const updatedMessages = updateReactionsInMessages(messages);
         setMessages(updatedMessages);
 
         if (activeChatId) {
-            onChatHistoryChange(chatHistory.map(chat => {
+            onChatHistoryChange(prev => prev.map(chat => {
                 if (chat.id === activeChatId) {
                     return { ...chat, messages: updatedMessages };
                 }
