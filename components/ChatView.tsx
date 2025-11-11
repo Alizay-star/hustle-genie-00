@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Chat } from '@google/genai';
 import { startChatSession, sendMessageToGenie, generateImageFromPrompt } from '../services/geminiService';
@@ -31,11 +32,12 @@ type GeminiHistory = {
 interface ChatViewProps {
   settings: Settings;
   onSettingsChange: (settings: Partial<Settings>) => void;
+  chatHistory: ChatHistoryItem[];
+  onChatHistoryChange: (history: ChatHistoryItem[]) => void;
 }
 
 type ChatMode = 'text' | 'image';
 type HistoryTab = 'chats' | 'images' | 'pinned';
-const LOCAL_STORAGE_KEY = 'hustleGenieChatHistory';
 const CHAR_LIMIT = 1000;
 
 const themes: { name: Theme; color: string; label: string, icon?: React.ReactNode }[] = [
@@ -71,7 +73,7 @@ const PromptButton: React.FC<{onClick: () => void, children: React.ReactNode}> =
 );
 
 
-const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
+const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange, chatHistory, onChatHistoryChange }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -82,15 +84,6 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
     const [isConfirmingClear, setIsConfirmingClear] = useState(false);
     const [historyTab, setHistoryTab] = useState<HistoryTab>('chats');
     const [historySearchTerm, setHistorySearchTerm] = useState('');
-    const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>(() => {
-        try {
-            const savedHistory = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-            return savedHistory ? JSON.parse(savedHistory) : [];
-        } catch (error) {
-            console.error("Failed to load chat history from local storage", error);
-            return [];
-        }
-    });
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
     const [editingChatId, setEditingChatId] = useState<string | null>(null);
     const [editingTitle, setEditingTitle] = useState('');
@@ -100,15 +93,6 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inactivityTimerRef = useRef<number | null>(null);
     const { showSparkles } = useSparkles();
-
-    // Save chat history to local storage whenever it changes
-    useEffect(() => {
-        try {
-            window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(chatHistory));
-        } catch (error) {
-            console.error("Failed to save chat history to local storage", error);
-        }
-    }, [chatHistory]);
 
     useEffect(() => {
         if (scrollToMessageId) {
@@ -209,22 +193,22 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
         }
     };
 
-    const handleNewChat = () => {
+    const handleNewChat = useCallback(() => {
         reinitializeChat();
         setMessages([{ id: `msg-${Date.now()}`, role: 'model', responses: [{text: "A fresh start! What new wonders shall we explore today?"}], activeResponseIndex: 0, isInitial: true }]);
         setActiveChatId(null);
         setIsHistoryOpen(false);
-    };
+    }, [settings.personality]);
     
     // On initial load, if there's history, load the most recent chat. Otherwise, start a new one.
     useEffect(() => {
-        if (chatHistory.length > 0 && !activeChatId) {
-            handleSelectChat(chatHistory[0].id);
-        } else if (chatHistory.length === 0 && !activeChatId) {
+        if (chatHistory.length > 0) {
+            const sortedHistory = [...chatHistory].sort((a, b) => new Date(b.id).getTime() - new Date(a.id).getTime());
+            handleSelectChat(sortedHistory[0].id);
+        } else {
             handleNewChat();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [chatHistory, handleNewChat]);
 
     const handleSendMessageInternal = async (messageText: string) => {
         if (isLoading) return;
@@ -252,11 +236,11 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
                 date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
                 messages: updatedMessages,
             };
-            setChatHistory(prev => [newHistoryItem, ...prev]);
+            onChatHistoryChange([newHistoryItem, ...chatHistory]);
             setActiveChatId(newId);
             currentChatId = newId;
         } else {
-            setChatHistory(prev => prev.map(chat =>
+            onChatHistoryChange(chatHistory.map(chat =>
                 chat.id === currentChatId ? { ...chat, messages: updatedMessages } : chat
             ));
         }
@@ -280,7 +264,7 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
         const finalMessages = [...messagesWithPendingResolved, modelMessage];
         setMessages(finalMessages);
     
-        setChatHistory(prev => prev.map(chat =>
+        onChatHistoryChange(chatHistory.map(chat =>
             chat.id === currentChatId ? { ...chat, messages: finalMessages } : chat
         ));
     
@@ -303,19 +287,19 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
     };
 
     const handleDeleteChat = (idToDelete: string) => {
-        setChatHistory(prev => prev.filter(item => item.id !== idToDelete));
+        const newHistory = chatHistory.filter(item => item.id !== idToDelete);
+        onChatHistoryChange(newHistory);
         if (activeChatId === idToDelete) {
-            handleNewChat();
+            if (newHistory.length > 0) {
+                handleSelectChat(newHistory[0].id);
+            } else {
+                handleNewChat();
+            }
         }
     };
 
     const handleConfirmClearHistory = () => {
-        setChatHistory([]);
-        try {
-            window.localStorage.removeItem(LOCAL_STORAGE_KEY);
-        } catch (error) {
-            console.error("Failed to clear chat history from local storage", error);
-        }
+        onChatHistoryChange([]);
         handleNewChat();
         setIsConfirmingClear(false);
         setIsSettingsOpen(false);
@@ -341,12 +325,13 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
             });
         };
         
-        setMessages(prev => updateNavigation(prev));
+        const updatedMessages = updateNavigation(messages);
+        setMessages(updatedMessages);
 
         if (activeChatId) {
-            setChatHistory(prevHistory => prevHistory.map(chat => {
+            onChatHistoryChange(chatHistory.map(chat => {
                 if (chat.id === activeChatId) {
-                    return { ...chat, messages: updateNavigation(chat.messages) };
+                    return { ...chat, messages: updatedMessages };
                 }
                 return chat;
             }));
@@ -404,7 +389,7 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
             setMessages(finalMessages);
     
             if (activeChatId) {
-                setChatHistory(prev => prev.map(chat => 
+                onChatHistoryChange(chatHistory.map(chat => 
                     chat.id === activeChatId ? { ...chat, messages: finalMessages } : chat
                 ));
             }
@@ -441,11 +426,12 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
             return msgs;
         };
 
-        setMessages(prev => updateTypingStatus(prev));
+        const updatedMessages = updateTypingStatus(messages);
+        setMessages(updatedMessages);
         if (activeChatId) {
-            setChatHistory(prevHistory => prevHistory.map(chat => {
+            onChatHistoryChange(chatHistory.map(chat => {
                 if (chat.id === activeChatId) {
-                    return { ...chat, messages: updateTypingStatus(chat.messages) };
+                    return { ...chat, messages: updatedMessages };
                 }
                 return chat;
             }));
@@ -459,7 +445,7 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
 
     const handleSaveTitle = (id: string) => {
         if (!editingTitle.trim()) return; // Don't save empty titles
-        setChatHistory(prev => prev.map(chat => 
+        onChatHistoryChange(chatHistory.map(chat => 
             chat.id === id ? { ...chat, title: editingTitle.trim() } : chat
         ));
         setEditingChatId(null);
@@ -473,14 +459,14 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
         setMessages(updatedMessages);
 
         if (activeChatId) {
-            setChatHistory(prev => prev.map(chat =>
+            onChatHistoryChange(chatHistory.map(chat =>
                 chat.id === activeChatId ? { ...chat, messages: updatedMessages } : chat
             ));
         }
     };
 
     const handleToggleChatPin = (chatId: string) => {
-        setChatHistory(prev => prev.map(chat =>
+        onChatHistoryChange(chatHistory.map(chat =>
             chat.id === chatId ? { ...chat, isPinned: !chat.isPinned } : chat
         ));
     };
@@ -500,12 +486,13 @@ const ChatView: React.FC<ChatViewProps> = ({ settings, onSettingsChange }) => {
             });
         };
 
-        setMessages(prev => updateReactions(prev));
+        const updatedMessages = updateReactions(messages);
+        setMessages(updatedMessages);
 
         if (activeChatId) {
-            setChatHistory(prevHistory => prevHistory.map(chat => {
+            onChatHistoryChange(chatHistory.map(chat => {
                 if (chat.id === activeChatId) {
-                    return { ...chat, messages: updateReactions(chat.messages) };
+                    return { ...chat, messages: updatedMessages };
                 }
                 return chat;
             }));

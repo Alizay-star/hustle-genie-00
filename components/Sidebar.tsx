@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { AppView } from '../App';
 import { GenieLampIcon } from './icons/GenieLampIcon';
@@ -6,9 +7,11 @@ import { ChatIcon } from './icons/ChatIcon';
 import { ChevronLeftIcon } from './icons/ChevronLeftIcon';
 import { useSparkles } from '../contexts/SparkleContext';
 import { LogoutIcon } from './icons/LogoutIcon';
+import type { User } from '../types';
 
 
 interface SidebarProps {
+    currentUser: User;
     currentView: AppView;
     onNavigate: (view: AppView) => void;
     isSidebarOpen: boolean;
@@ -16,7 +19,7 @@ interface SidebarProps {
     onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isSidebarOpen, onToggle, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, currentView, onNavigate, isSidebarOpen, onToggle, onLogout }) => {
     const { showSparkles } = useSparkles();
 
     const handleLogoClick = (e: React.MouseEvent) => {
@@ -78,6 +81,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isSidebarOpe
             </div>
 
             <div className="flex-shrink-0 space-y-2">
+                 <div className="border-t border-border-primary pt-4 mt-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-accent-secondary flex-shrink-0 flex items-center justify-center font-bold text-accent-text text-lg">
+                            {currentUser.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isSidebarOpen ? 'max-w-full opacity-100' : 'max-w-0 opacity-0'}`}>
+                            <p className="font-semibold text-text-primary text-sm truncate">{currentUser.name}</p>
+                            <p className="text-text-secondary text-xs truncate">{currentUser.email}</p>
+                        </div>
+                    </div>
+                </div>
                 <button
                     onClick={onLogout}
                     className={`w-full flex items-center space-x-4 p-3 rounded-lg transition-colors text-text-secondary hover:bg-red-500/20 hover:text-red-400 ${!isSidebarOpen && 'justify-center'}`}

@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type, Chat, Modality } from "@google/genai";
-import type { WishFormData, HustleIdea, LaunchPlan, ChatMessage } from '../types';
+import type { WishFormData, HustleIdea, LaunchPlan, UserData, User, Settings, HustleGoal, ChatHistoryItem } from '../types';
 
 // The API key is hardcoded as requested by the user.
 const ai = new GoogleGenAI({ apiKey: "AIzaSyCRU9iRGkDIXCW9WDbP3ecPlbSbavbkiUA" });
@@ -120,7 +121,7 @@ export const generateInspirationalIdea = async (): Promise<HustleIdea[]> => {
   const prompt = `
     Conjure up ONE unique and inspiring side hustle idea. 
     It could be something creative, tech-focused, or a simple service with a unique twist. 
-    The goal is to spark creativity. Make it sound exciting and magical.
+    The goal is to spark creativity. Make it exciting and magical.
   `;
 
   try {
@@ -210,13 +211,13 @@ export const generateImageFromPrompt = async (prompt: string): Promise<string> =
 
 
 export const startChatSession = (history?: GeminiHistory, systemInstruction?: string): Chat => {
-  const defaultInstruction = 'You are HustleGenie, an AI assistant with a witty, encouraging, and magical personality. You help users with their side hustle questions, offering advice, motivation, and creative ideas. Keep your answers concise and fun. Format longer responses into paragraphs for readability.';
+  const instruction = systemInstruction || 'You are HustleGenie, an AI assistant with a witty, encouraging, and magical personality. You help users with their side hustle questions, offering advice, motivation, and creative ideas. Keep your answers concise and fun. Format longer responses into paragraphs for readability.';
   
   return ai.chats.create({
     model: 'gemini-2.5-flash',
     history: history,
     config: {
-        systemInstruction: systemInstruction || defaultInstruction,
+        systemInstruction: instruction,
     },
   });
 };
@@ -230,3 +231,122 @@ export const sendMessageToGenie = async (chat: Chat, message: string): Promise<s
         return "Oops! My magic lamp seems to be on the fritz. Please try again in a moment.";
     }
 };
+
+// --- DATA STORAGE SERVICE ---
+
+const USERS_STORAGE_KEY = 'hustleGenieUsers';
+
+const defaultPersonality = 'You are HustleGenie, an AI assistant with a witty, encouraging, and magical personality. You help users with their side hustle questions, offering advice, motivation, and creative ideas. Keep your answers concise and fun. Format longer responses into paragraphs for readability.';
+
+export const getUsers = (): User[] => {
+  try {
+    const data = window.localStorage.getItem(USERS_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+};
+
+export const findUserByEmail = (email: string): User | undefined => {
+  return getUsers().find(u => u.email === email);
+}
+
+export const authenticateUser = (email: string, password: string): User | null => {
+  const user = findUserByEmail(email);
+  if (user && user.password === password) {
+    return user;
+  }
+  return null;
+}
+
+export const addUser = (user: User): { success: boolean, error?: string } => {
+  const users = getUsers();
+  if (users.some(u => u.email === user.email)) {
+    return { success: false, error: 'An account with this email already exists.' };
+  }
+  
+  const updatedUsers = [...users, user];
+  try {
+    window.localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
+  } catch (err) {
+    return { success: false, error: "Could not create account. Your browser's storage might be full."};
+  }
+  
+  // Create default data for the new user
+  const newUserData: UserData = {
+    settings: {
+      theme: 'default',
+      font: 'nunito',
+      personality: defaultPersonality,
+    },
+    goals: [
+        { title: 'My First Hustle', current: 0, goal: 500 },
+    ],
+    chatHistory: [],
+  };
+  saveUserData(user.email, newUserData);
+  
+  return { success: true };
+};
+
+const getUserDataKey = (email: string) => `hustleGenieData_${email}`;
+
+export const getUserData = (email: string): UserData | null => {
+    try {
+        const data = window.localStorage.getItem(getUserDataKey(email));
+        return data ? JSON.parse(data) : null;
+    } catch (e) {
+        console.error("Failed to load user data", e);
+        return null;
+    }
+}
+
+export const saveUserData = (email: string, data: UserData) => {
+    try {
+        window.localStorage.setItem(getUserDataKey(email), JSON.stringify(data));
+    } catch (e) {
+        console.error("Failed to save user data", e);
+    }
+}
+
+export const migrateOldData = () => {
+    try {
+        const oldSettingsKey = 'hustleGenieSettings';
+        const oldHistoryKey = 'hustleGenieChatHistory';
+        
+        const oldSettingsRaw = window.localStorage.getItem(oldSettingsKey);
+        const oldHistoryRaw = window.localStorage.getItem(oldHistoryKey);
+
+        if (oldSettingsRaw || oldHistoryRaw) {
+            const activeUserEmail = window.localStorage.getItem('hustleGenieActiveUser');
+            if (activeUserEmail) {
+                let settings: Settings = { theme: 'default', font: 'nunito', personality: defaultPersonality };
+                if (oldSettingsRaw) {
+                    const parsed = JSON.parse(oldSettingsRaw);
+                    if (parsed.personality) settings = parsed;
+                }
+                
+                let chatHistory: ChatHistoryItem[] = [];
+                if (oldHistoryRaw) {
+                    chatHistory = JSON.parse(oldHistoryRaw);
+                }
+
+                const userData = getUserData(activeUserEmail);
+                if (userData) {
+                    // Merge if data already exists, preferring new data unless empty
+                    userData.settings = settings;
+                    if (userData.chatHistory.length === 0) {
+                        userData.chatHistory = chatHistory;
+                    }
+                    saveUserData(activeUserEmail, userData);
+                }
+            }
+
+            // Clean up old keys
+            window.localStorage.removeItem(oldSettingsKey);
+            window.localStorage.removeItem(oldHistoryKey);
+        }
+    } catch (e) {
+        console.error("Failed to migrate old data", e);
+    }
+}

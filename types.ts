@@ -1,3 +1,4 @@
+
 // Fix: Import `ReactNode` to be used in the ChatMessage interface and resolve the 'Cannot find namespace React' error.
 import type { ReactNode } from 'react';
 
@@ -8,6 +9,12 @@ export interface Settings {
   theme: Theme;
   font: FontTheme;
   personality: string;
+}
+
+export interface User {
+  name: string;
+  email: string;
+  password: string; // In a real app, this would be a hash, not plaintext.
 }
 
 export interface HustleGoal {
@@ -69,4 +76,10 @@ export interface PlanDay {
 
 export interface LaunchPlan {
   plan: PlanDay[];
+}
+
+export interface UserData {
+  settings: Settings;
+  goals: HustleGoal[];
+  chatHistory: ChatHistoryItem[];
 }

@@ -1,15 +1,20 @@
+
 import React, { useState } from 'react';
 import { GenieLampIcon } from './icons/GenieLampIcon';
 import { LoginIcon } from './icons/LoginIcon';
 import { useSparkles } from '../contexts/SparkleContext';
 import SparkleEffect from './effects/SparkleEffect';
+import type { User } from '../types';
+import { authenticateUser, findUserByEmail, addUser } from '../services/geminiService';
 
 interface LoginViewProps {
-  onLogin: () => void;
+  onLogin: (user: User) => void;
 }
 
 const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const { showSparkles } = useSparkles();
+  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,22 +26,59 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please fill in both email and password.');
-      return;
+
+    if (isSigningUp) {
+      // Sign Up Logic
+      if (!name || !email || !password) {
+        setError('Please fill in all fields.');
+        return;
+      }
+      if (!email.includes('@')) {
+        setError('Please enter a valid email address.');
+        return;
+      }
+      if (findUserByEmail(email)) {
+        setError('An account with this email already exists.');
+        return;
+      }
+      
+      const newUser: User = { name, email, password };
+      const result = addUser(newUser);
+
+      if (result.success) {
+        setError('');
+        onLogin(newUser);
+      } else {
+        setError(result.error || 'An unknown error occurred.');
+      }
+
+    } else {
+      // Login Logic
+      if (!email || !password) {
+        setError('Please fill in both email and password.');
+        return;
+      }
+      const foundUser = authenticateUser(email, password);
+      if (foundUser) {
+        setError('');
+        onLogin(foundUser);
+      } else {
+        setError('Invalid email or password.');
+      }
     }
-    // Simple validation for demo
-    if (!email.includes('@')) {
-      setError('Please enter a valid email address.');
-      return;
-    }
+  };
+
+  const toggleMode = () => {
+    setIsSigningUp(!isSigningUp);
     setError('');
-    onLogin();
+    setName('');
+    setEmail('');
+    setPassword('');
   };
 
   return (
     <div
-      className="theme-default font-nunito h-screen text-text-primary bg-background-primary flex flex-col items-center justify-center p-4"
+      className="theme-default font-nunito h-full text-text-primary bg-background-primary flex flex-col items-center justify-center p-4"
       style={{backgroundImage: 'linear-gradient(to bottom right, var(--gradient-from), var(--gradient-to))'}}
     >
       <SparkleEffect />
@@ -52,10 +94,31 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         <div 
           className="mt-8 bg-background-secondary/50 backdrop-blur-sm rounded-2xl p-8 shadow-2xl border border-border-primary text-left"
         >
-          <h2 className="text-2xl font-bold text-center mb-6 text-accent-primary">Log In to Your Lamp</h2>
+          <h2 className="text-2xl font-bold text-center mb-6 text-accent-primary">
+            {isSigningUp ? 'Create Your Account' : 'Log In to Your Lamp'}
+          </h2>
           
           <form onSubmit={handleSubmit}>
             <div className="space-y-4">
+              {isSigningUp && (
+                 <div>
+                    <label htmlFor="name" className="text-sm font-medium text-text-secondary">Your Name</label>
+                    <div className="relative mt-1">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-text-secondary pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>
+                    </span>
+                    <input 
+                        id="name"
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Aladdin"
+                        className="w-full pl-10 pr-3 py-2 bg-background-tertiary rounded-lg border border-border-primary focus:ring-1 focus:ring-accent-primary focus:outline-none"
+                        aria-label="Your Name"
+                    />
+                    </div>
+                </div>
+              )}
               <div>
                 <label htmlFor="email" className="text-sm font-medium text-text-secondary">Email Address</label>
                 <div className="relative mt-1">
@@ -93,13 +156,15 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               </div>
             </div>
             
-            <div className="flex items-center justify-between mt-4 text-xs">
-              <label className="flex items-center text-text-secondary cursor-pointer">
-                <input type="checkbox" className="h-4 w-4 rounded bg-background-tertiary border-border-primary text-accent-primary focus:ring-accent-primary"/>
-                <span className="ml-2">Remember me</span>
-              </label>
-              <a href="#" className="font-medium text-accent-secondary hover:underline">Forgot password?</a>
-            </div>
+            {!isSigningUp && (
+              <div className="flex items-center justify-between mt-4 text-xs">
+                <label className="flex items-center text-text-secondary cursor-pointer">
+                  <input type="checkbox" className="h-4 w-4 rounded bg-background-tertiary border-border-primary text-accent-primary focus:ring-accent-primary"/>
+                  <span className="ml-2">Remember me</span>
+                </label>
+                <a href="#" className="font-medium text-accent-secondary hover:underline">Forgot password?</a>
+              </div>
+            )}
 
             {error && <p className="text-red-400 text-sm text-center mt-4">{error}</p>}
             
@@ -108,31 +173,16 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               className="mt-6 w-full bg-accent-primary text-accent-text font-bold py-3 px-6 rounded-full shadow-lg hover:opacity-90 transition-transform transform hover:scale-105 text-lg flex items-center justify-center gap-2"
             >
               <LoginIcon className="w-5 h-5" />
-              <span>Log In</span>
+              <span>{isSigningUp ? 'Create Account' : 'Log In'}</span>
             </button>
           </form>
 
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center" aria-hidden="true">
-              <div className="w-full border-t border-border-primary" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="bg-background-secondary px-2 text-text-secondary rounded-full">Or continue with</span>
-            </div>
+          <div className="text-center mt-6 text-sm">
+            <button onClick={toggleMode} className="text-accent-secondary hover:underline font-medium">
+              {isSigningUp ? 'Already have an account? Log In' : "Don't have an account? Sign Up"}
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={onLogin} // For demo purposes, this logs in directly
-            className="w-full bg-white text-gray-700 font-semibold py-3 px-6 rounded-full shadow-lg hover:bg-gray-100 transition-transform transform hover:scale-105 text-md flex items-center justify-center gap-3"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12s5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24s8.955,20,20,20s20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"></path><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"></path><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"></path><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.574l6.19,5.238C42.022,35.244,44,30.036,44,24C44,22.659,43.862,21.35,43.611,20.083z"></path></svg>
-            <span>Sign in with Google</span>
-          </button>
         </div>
-        <p className="text-xs text-text-secondary/50 mt-6">
-            (Use any email/password to log in for this demo)
-        </p>
       </div>
     </div>
   );

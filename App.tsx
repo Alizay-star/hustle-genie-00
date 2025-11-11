@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import WishForm from './components/WishForm';
 import { generateHustleIdeas, generateLaunchPlan, generateInspirationalIdea } from './services/geminiService';
-import type { HustleGoal, HustleIdea, WishFormData, LaunchPlan, Settings } from './types';
+import type { HustleGoal, HustleIdea, WishFormData, LaunchPlan, Settings, User, ChatHistoryItem, UserData } from './types';
+import { getUserData, saveUserData, migrateOldData } from './services/geminiService';
 import HustleGoalCard from './components/HustleGoalCard';
 import HustleIdeaCard from './components/HustleIdeaCard';
 import { GenieLampIcon } from './components/icons/GenieLampIcon';
@@ -17,19 +18,18 @@ import LoginView from './components/LoginView';
 
 export type AppView = 'home' | 'wishing' | 'loading' | 'results' | 'error' | 'chat' | 'launchPlan';
 
-const initialGoals: HustleGoal[] = [
-    { title: 'Freelance Copy Genie', current: 150, goal: 500 },
-    { title: 'Sell Crafts Online', current: 200, goal: 400 },
-];
-
-const SETTINGS_STORAGE_KEY = 'hustleGenieSettings';
 const defaultPersonality = 'You are HustleGenie, an AI assistant with a witty, encouraging, and magical personality. You help users with their side hustle questions, offering advice, motivation, and creative ideas. Keep your answers concise and fun. Format longer responses into paragraphs for readability.';
 
 interface AppContentProps {
+  currentUser: User;
+  userData: UserData;
+  onUserDataChange: (data: UserData) => void;
   onLogout: () => void;
 }
 
-const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
+const AppContent: React.FC<AppContentProps> = ({ currentUser, userData, onUserDataChange, onLogout }) => {
+  const { settings, goals, chatHistory } = userData;
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth >= 768; // md breakpoint
@@ -40,26 +40,10 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   const [animationClass, setAnimationClass] = useState('animate-view-in');
   const [hustleIdeas, setHustleIdeas] = useState<HustleIdea[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [goals, setGoals] = useState<HustleGoal[]>(initialGoals);
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [launchPlan, setLaunchPlan] = useState<LaunchPlan | null>(null);
   const [selectedIdea, setSelectedIdea] = useState<HustleIdea | null>(null);
   const [inspirationMode, setInspirationMode] = useState<boolean>(false);
-  const [settings, setSettings] = useState<Settings>(() => {
-    try {
-      const saved = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (!parsed.personality) {
-          parsed.personality = defaultPersonality;
-        }
-        return parsed;
-      }
-    } catch (e) {
-      console.error("Failed to load settings from storage", e);
-    }
-    return { theme: 'default', font: 'nunito', personality: defaultPersonality };
-  });
   
   const { showSparkles } = useSparkles();
 
@@ -69,16 +53,15 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   };
 
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-    } catch (e) {
-      console.error("Failed to save settings to storage", e);
-    }
-  }, [settings]);
-
   const handleSettingsChange = (newSettings: Partial<Settings>) => {
-    setSettings(prev => ({...prev, ...newSettings}));
+    onUserDataChange({
+      ...userData,
+      settings: { ...settings, ...newSettings },
+    });
+  }
+  
+  const handleChatHistoryChange = (newChatHistory: ChatHistoryItem[]) => {
+    onUserDataChange({ ...userData, chatHistory: newChatHistory });
   }
 
   const handleViewChange = (newView: AppView) => {
@@ -144,11 +127,10 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   };
   
   const handleGoalUpdate = (titleToUpdate: string, newCurrent: number) => {
-    setGoals(currentGoals =>
-      currentGoals.map(goal =>
-        goal.title === titleToUpdate ? { ...goal, current: newCurrent } : goal
-      )
+    const newGoals = goals.map(goal =>
+      goal.title === titleToUpdate ? { ...goal, current: newCurrent } : goal
     );
+    onUserDataChange({ ...userData, goals: newGoals });
   };
   
   const handleGoalAdd = (newGoal: { title: string; goal: number; imageUrl?: string }) => {
@@ -157,15 +139,17 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
         alert("A goal with this title already exists!");
         return;
     }
-    setGoals(currentGoals => [
-        ...currentGoals,
+    const newGoals = [
+        ...goals,
         { ...newGoal, current: 0 }
-    ]);
+    ];
+    onUserDataChange({ ...userData, goals: newGoals });
     setIsAddingGoal(false); // Hide form after adding
   };
 
   const handleGoalDelete = (titleToDelete: string) => {
-    setGoals(currentGoals => currentGoals.filter(goal => goal.title !== titleToDelete));
+    const newGoals = goals.filter(goal => goal.title !== titleToDelete);
+    onUserDataChange({ ...userData, goals: newGoals });
   };
 
 
@@ -257,6 +241,8 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
         return <ChatView 
           settings={settings}
           onSettingsChange={handleSettingsChange}
+          chatHistory={chatHistory}
+          onChatHistoryChange={handleChatHistoryChange}
         />;
       case 'home':
       default:
@@ -272,7 +258,7 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
                 </div>
                 <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
                     <div className="lg:col-span-3 bg-background-secondary backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-border-primary">
-                    <h2 className="text-4xl font-bold text-text-primary">Welcome back, dreamer!</h2>
+                    <h2 className="text-4xl font-bold text-text-primary">Welcome back, {currentUser.name}!</h2>
                     <p className="text-text-secondary mt-2 text-lg">Ready to make your next wish?</p>
                     <div className="flex flex-wrap gap-4 mt-6">
                       <button onClick={handleStartWish} className="bg-accent-primary text-accent-text font-bold py-4 px-10 rounded-full shadow-lg hover:opacity-90 transition-transform transform hover:scale-105 text-lg">
@@ -331,7 +317,7 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   };
 
   return (
-    <div className={`theme-${settings.theme} font-${settings.font} h-screen text-text-primary bg-background-primary flex overflow-hidden`}
+    <div className={`theme-${settings.theme} font-${settings.font} h-full text-text-primary bg-background-primary flex overflow-hidden`}
          style={{backgroundImage: 'linear-gradient(to bottom right, var(--gradient-from), var(--gradient-to))'}}
     >
       <SparkleEffect />
@@ -341,6 +327,7 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
         aria-hidden="true"
       ></div>
       <Sidebar 
+        currentUser={currentUser}
         currentView={view}
         onNavigate={(newView) => {
             handleViewChange(newView);
@@ -378,43 +365,84 @@ const AppContent: React.FC<AppContentProps> = ({ onLogout }) => {
   );
 };
 
-const AUTH_TOKEN_KEY = 'hustleGenieAuthToken';
+const ACTIVE_USER_SESSION_KEY = 'hustleGenieActiveUser';
+const USERS_STORAGE_KEY = 'hustleGenieUsers'; // Note: This is now only used for session retrieval, not data logic
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+  // One-time migration/cleanup of old storage keys
+  useEffect(() => {
+    migrateOldData();
+  }, []);
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
-      // Check for a mock auth token
-      return !!window.localStorage.getItem(AUTH_TOKEN_KEY);
+      const userEmail = window.localStorage.getItem(ACTIVE_USER_SESSION_KEY);
+      if (!userEmail) return null;
+
+      // We still need the user list to get the user's name, etc.
+      const allUsers: User[] = JSON.parse(window.localStorage.getItem(USERS_STORAGE_KEY) || '[]');
+      return allUsers.find(user => user.email === userEmail) || null;
     } catch (e) {
       console.error("Failed to read auth state from storage", e);
-      return false;
+      return null;
     }
   });
 
-  const handleLogin = () => {
+  const [userData, setUserData] = useState<UserData | null>(null);
+
+  useEffect(() => {
+    if (currentUser) {
+      const data = getUserData(currentUser.email);
+      if (data) {
+        // Simple data validation/hydration
+        if (!data.settings.personality) {
+          data.settings.personality = defaultPersonality;
+        }
+        setUserData(data);
+      }
+    } else {
+      setUserData(null);
+    }
+  }, [currentUser]);
+
+
+  const handleLogin = (user: User) => {
     try {
-      // In a real app, this token would be provided by a backend server after successful authentication.
-      const mockToken = `mock-jwt-token.${btoa(JSON.stringify({ user: 'demo-user', exp: Date.now() + (3600 * 1000) }))}`;
-      window.localStorage.setItem(AUTH_TOKEN_KEY, mockToken);
+      window.localStorage.setItem(ACTIVE_USER_SESSION_KEY, user.email);
     } catch (e) {
       console.error("Failed to save auth state to storage", e);
     }
-    setIsAuthenticated(true);
+    setCurrentUser(user);
   };
   
   const handleLogout = () => {
     try {
-      // Clear the mock token
-      window.localStorage.removeItem(AUTH_TOKEN_KEY);
+      window.localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
     } catch (e) {
       console.error("Failed to clear auth state from storage", e);
     }
-    setIsAuthenticated(false);
+    setCurrentUser(null);
+  };
+
+  const handleUserDataChange = (newUserData: UserData) => {
+    if (currentUser) {
+      setUserData(newUserData);
+      saveUserData(currentUser.email, newUserData);
+    }
   };
   
   return (
     <SparkleProvider>
-      {isAuthenticated ? <AppContent onLogout={handleLogout} /> : <LoginView onLogin={handleLogin} />}
+      {currentUser && userData ? (
+        <AppContent 
+          currentUser={currentUser} 
+          userData={userData}
+          onUserDataChange={handleUserDataChange}
+          onLogout={handleLogout} 
+        />
+      ) : (
+        <LoginView onLogin={handleLogin} />
+      )}
     </SparkleProvider>
   );
 }
