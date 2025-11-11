@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import WishForm from './components/WishForm';
 import { generateHustleIdeas, generateLaunchPlan, generateInspirationalIdea } from './services/geminiService';
